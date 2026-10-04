@@ -142,5 +142,96 @@ void main() {
       expect(toMapResult['status'], equals('Hadir'));
       expect(toMapResult['sessionId'], equals('session_1'));
     });
+
+    test('Aturan Bisnis: Role hanya mahasiswa dan dosen', () {
+      final mhs = UserModel(
+        uid: 'u1',
+        nama: 'Budi',
+        email: 'budi@test.com',
+        identitas: '123456',
+        role: 'mahasiswa',
+      );
+      final dsn = UserModel(
+        uid: 'u2',
+        nama: 'Dr. Supriyono',
+        email: 'supriyono@test.com',
+        identitas: '19700101',
+        role: 'dosen',
+      );
+      final unknown = UserModel(
+        uid: 'u3',
+        nama: 'Admin User',
+        email: 'admin@test.com',
+        identitas: '000000',
+        role: 'admin',
+      );
+
+      expect(mhs.isMahasiswa, isTrue);
+      expect(mhs.isDosen, isFalse);
+      expect(dsn.isDosen, isTrue);
+      expect(dsn.isMahasiswa, isFalse);
+      // Admin tidak diizinkan sebagai mahasiswa maupun dosen
+      expect(unknown.isMahasiswa, isFalse);
+      expect(unknown.isDosen, isFalse);
+    });
+
+    test('Aturan Bisnis: 4 status kehadiran valid dengan helper flags', () {
+      const statuses = ['Hadir', 'Izin', 'Sakit', 'Alpha'];
+
+      for (final s in statuses) {
+        final a = AttendanceModel(
+          sessionId: 's1',
+          studentId: 'st1',
+          status: s,
+          waktuPresensi: 1000,
+        );
+        expect(a.status, equals(s));
+        switch (s) {
+          case 'Hadir':
+            expect(a.isHadir, isTrue);
+            expect(a.isIzin, isFalse);
+            break;
+          case 'Izin':
+            expect(a.isIzin, isTrue);
+            expect(a.isHadir, isFalse);
+            break;
+          case 'Sakit':
+            expect(a.isSakit, isTrue);
+            expect(a.isHadir, isFalse);
+            break;
+          case 'Alpha':
+            expect(a.isAlpha, isTrue);
+            expect(a.isHadir, isFalse);
+            break;
+        }
+      }
+    });
+
+    test('Aturan Bisnis: Status sesi hanya aktif atau ditutup', () {
+      final sesiAktif = SessionModel(
+        sessionId: 's1',
+        judulSesi: 'Sesi 1',
+        informasiPertemuan: 'Ruang 301',
+        lecturerId: 'd1',
+        kodePresensi: 'ABC234',
+        status: 'aktif',
+        waktuDibuat: 1000,
+      );
+      final sesiTutup = sesiAktif.copyWith(status: 'ditutup');
+
+      expect(sesiAktif.isAktif, isTrue);
+      expect(sesiTutup.isAktif, isFalse);
+      expect(sesiTutup.status, equals('ditutup'));
+    });
+
+    test('Validators: Edge case kode presensi (spasi, lowercase, panjang tidak pas)', () {
+      expect(Validators.kodePresensi('ABC 12'), isNotNull);
+      expect(Validators.kodePresensi('ABCDE'), isNotNull); // 5 char
+      expect(Validators.kodePresensi('ABCDEFG'), isNotNull); // 7 char
+      expect(Validators.kodePresensi('ABC!23'), isNotNull); // simbol
+      expect(Validators.kodePresensi('ABCDEF'), isNull); // 6 huruf kapital
+      expect(Validators.kodePresensi('123456'), isNull); // 6 angka
+      expect(Validators.kodePresensi('A1B2C3'), isNull); // 6 alfanumerik
+    });
   });
 }

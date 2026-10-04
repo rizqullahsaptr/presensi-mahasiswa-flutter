@@ -48,4 +48,28 @@ class SessionModel {
     if (waktuDibuka != null) 'waktuDibuka': waktuDibuka,
     if (waktuDitutup != null) 'waktuDitutup': waktuDitutup,
   };
+
+  SessionModel copyWith({
+    String? sessionId,
+    String? judulSesi,
+    String? informasiPertemuan,
+    String? lecturerId,
+    String? kodePresensi,
+    String? status,
+    int? waktuDibuat,
+    int? waktuDibuka,
+    int? waktuDitutup,
+  }) {
+    return SessionModel(
+      sessionId: sessionId ?? this.sessionId,
+      judulSesi: judulSesi ?? this.judulSesi,
+      informasiPertemuan: informasiPertemuan ?? this.informasiPertemuan,
+      lecturerId: lecturerId ?? this.lecturerId,
+      kodePresensi: kodePresensi ?? this.kodePresensi,
+      status: status ?? this.status,
+      waktuDibuat: waktuDibuat ?? this.waktuDibuat,
+      waktuDibuka: waktuDibuka ?? this.waktuDibuka,
+      waktuDitutup: waktuDitutup ?? this.waktuDitutup,
+    );
+  }
 }

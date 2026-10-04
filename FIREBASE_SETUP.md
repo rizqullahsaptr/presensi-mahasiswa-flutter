@@ -154,4 +154,87 @@ Karena pendaftaran akun tidak dibuka bebas untuk umum (sesuai spesifikasi Tahap 
    }
    ```
 
-Setelah langkah ini selesai, aplikasi siap dijalankan dengan `flutter run` pada perangkat atau emulator Android.
+---
+
+## 7. Contoh Struktur Data JSON Lengkap (3 Node Utama)
+
+Berikut adalah contoh snapshot pohon data Realtime Database yang valid:
+
+```json
+{
+  "users": {
+    "uid_dosen_001": {
+      "nama": "SUPRIYONO, M.Kom",
+      "email": "dosen@uin-malang.ac.id",
+      "identitas": "198001012005011001",
+      "role": "dosen"
+    },
+    "uid_mhs_001": {
+      "nama": "Muhammad Rizqullah Saputra",
+      "email": "rizqullah@student.uin-malang.ac.id",
+      "identitas": "240605110102",
+      "role": "mahasiswa"
+    }
+  },
+  "sessions": {
+    "-O_sessionId12345": {
+      "judulSesi": "Pertemuan 1 - Pengantar Mobile Programming",
+      "informasiPertemuan": "Ruang Lab Komputer 301, Gedung Saintek",
+      "lecturerId": "uid_dosen_001",
+      "kodePresensi": "A7X9K2",
+      "status": "aktif",
+      "waktuDibuat": 1728100000000,
+      "waktuDibuka": 1728100010000,
+      "waktuDitutup": null
+    }
+  },
+  "attendance": {
+    "-O_sessionId12345": {
+      "uid_mhs_001": {
+        "sessionId": "-O_sessionId12345",
+        "studentId": "uid_mhs_001",
+        "status": "Hadir",
+        "waktuPresensi": 1728100050000
+      }
+    }
+  }
+}
+```
+
+---
+
+## 8. Skenario Pengujian Setelah Firebase Aktif
+
+Setelah menghubungkan aplikasi ke Firebase dan membuat akun demo, lakukan pengujian fungsional end-to-end berikut:
+
+1. **Uji Login Dosen**:
+   - Masukkan email dan password Dosen.
+   - Verifikasi bahwa aplikasi masuk ke tampilan Dosen (`DosenShell`) dengan judul dan identitas yang benar.
+2. **Uji Pembuatan Sesi**:
+   - Pada halaman Dosen, tekan tombol **Buat Sesi Baru**.
+   - Masukkan Judul Sesi dan Informasi Pertemuan (misal: "Pertemuan 1").
+   - Tekan **Simpan & Buka Sesi**.
+   - Verifikasi bahwa sesi muncul di daftar sesi aktif dan sebuah **Kode Presensi 6 Karakter** alfanumerik kapital terbuat.
+3. **Uji Login Mahasiswa**:
+   - Logout dari akun Dosen, login menggunakan akun Mahasiswa.
+   - Verifikasi bahwa aplikasi masuk ke tampilan Mahasiswa (`MahasiswaShell`).
+4. **Uji Pengisian Presensi Mahasiswa**:
+   - Masukkan kode presensi 6 karakter dari sesi aktif dosen.
+   - Tekan **Cari Sesi**, periksa dialog konfirmasi detail pertemuan.
+   - Tekan **Kirim Kehadiran**.
+   - Verifikasi bahwa muncul pesan sukses dan status langsung tercatat sebagai **Hadir**.
+5. **Uji Validasi Duplikasi Kehadiran**:
+   - Coba masukkan kembali kode presensi yang sama dengan akun mahasiswa yang sama.
+   - Verifikasi bahwa sistem menolak dengan pesan *"Anda sudah melakukan presensi pada sesi ini"*.
+6. **Uji Riwayat Kehadiran Mahasiswa**:
+   - Pindah ke tab **Riwayat**.
+   - Verifikasi bahwa sesi yang baru saja dihadiri tampil di daftar riwayat dengan badge hijau **Hadir**.
+7. **Uji Pemantauan Real-time & Koreksi Status oleh Dosen**:
+   - Logout dan login kembali sebagai Dosen.
+   - Buka sesi yang tadi di tab **Daftar Sesi** atau Dashboard.
+   - Verifikasi nama mahasiswa muncul secara real-time pada daftar hadir.
+   - Ketuk mahasiswa tersebut, lakukan koreksi status menjadi **Izin**, **Sakit**, atau **Alpha**.
+   - Simpan dan verifikasi perubahan status langsung terbarui di database.
+8. **Uji Penutupan Sesi oleh Dosen**:
+   - Tekan tombol **Tutup Sesi**.
+   - Coba lakukan presensi ulang dengan kode sesi tersebut dari sisi Mahasiswa; verifikasi sistem menolak dengan pesan *"Sesi presensi sudah ditutup"*.
