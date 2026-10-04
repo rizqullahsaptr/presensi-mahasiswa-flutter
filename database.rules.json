@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid",
+        ".validate": "newData.hasChildren(['nama', 'email', 'identitas', 'role']) && (newData.child('role').val() == 'mahasiswa' || newData.child('role').val() == 'dosen')"
+      }
+    },
+    "sessions": {
+      ".read": "auth != null",
+      "$sessionId": {
+        ".write": "auth != null && (!data.exists() || data.child('lecturerId').val() == auth.uid)",
+        ".validate": "newData.hasChildren(['judulSesi', 'informasiPertemuan', 'lecturerId', 'kodePresensi', 'status', 'waktuDibuat'])"
+      },
+      ".indexOn": ["lecturerId", "kodePresensi", "status"]
+    },
+    "attendance": {
+      "$sessionId": {
+        ".read": "auth != null",
+        "$studentId": {
+          ".write": "auth != null && (auth.uid == $studentId || root.child('sessions').child($sessionId).child('lecturerId').val() == auth.uid)",
+          ".validate": "newData.hasChildren(['sessionId', 'studentId', 'status', 'waktuPresensi']) && (newData.child('status').val() == 'Hadir' || newData.child('status').val() == 'Izin' || newData.child('status').val() == 'Sakit' || newData.child('status').val() == 'Alpha')"
+        }
+      },
+      ".indexOn": ["studentId", "status"]
+    }
+  }
+}

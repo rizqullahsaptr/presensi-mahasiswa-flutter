@@ -1,30 +1,19 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:presensi_mahasiswa/main.dart';
+import 'package:presensi_mahasiswa/theme/app_theme.dart';
+import 'package:flutter/material.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('AppTheme palet warna dan status konsisten dengan Tahap 2', () {
+    expect(StatusColors.hadir, equals(const Color(0xFF2E7D32)));
+    expect(StatusColors.izin, equals(const Color(0xFF1565C0)));
+    expect(StatusColors.sakit, equals(const Color(0xFFF57F17)));
+    expect(StatusColors.alpha, equals(const Color(0xFFC62828)));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(StatusColors.forStatus('Hadir'), equals(StatusColors.hadir));
+    expect(StatusColors.forStatus('Izin'), equals(StatusColors.izin));
+    expect(StatusColors.forStatus('Sakit'), equals(StatusColors.sakit));
+    expect(StatusColors.forStatus('Alpha'), equals(StatusColors.alpha));
+    // Default fallback untuk status tidak dikenal adalah alpha
+    expect(StatusColors.forStatus('unknown'), equals(StatusColors.alpha));
   });
 }
