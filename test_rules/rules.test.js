@@ -364,4 +364,224 @@ describe('Firebase Realtime Database Security Rules Test Suite', () => {
       })
     );
   });
+
+  // ─────────────────────────────────────────
+  // SKENARIO BARU: Persistent Index & Role-Enforced Query
+  // ─────────────────────────────────────────
+
+  it('16. Riwayat tetap dapat dimuat instance SessionService baru tanpa cache lama', async () => {
+    // Seed: attendance mhs1 di sesi1, dan index sudah ada
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      await db.ref('attendance/sesi1/mhs1').set({
+        sessionId: 'sesi1',
+        studentId: 'mhs1',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+      await db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true);
+    });
+
+    // Simulasi instance baru: baca index dari Firebase (bukan cache proses)
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+    const indexSnap = await assertSucceeds(
+      mhs1Db.ref('users/mhs1/attendanceSessionIds').once('value')
+    );
+    assert.ok(indexSnap.val() !== null);
+    assert.ok(indexSnap.val()['sesi1'] === true);
+
+    // Baca attendance berdasarkan index — seperti yang dilakukan getRiwayatMahasiswa()
+    const attSnap = await assertSucceeds(
+      mhs1Db.ref('attendance/sesi1/mhs1').once('value')
+    );
+    assert.ok(attSnap.val() !== null);
+    assert.strictEqual(attSnap.val().status, 'Hadir');
+  });
+
+  it('17. Riwayat tetap ada setelah simulasi logout dan login ulang', async () => {
+    // Seed: attendance + index persisten
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      await db.ref('attendance/sesi1/mhs1').set({
+        sessionId: 'sesi1',
+        studentId: 'mhs1',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+      await db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true);
+    });
+
+    // "Logout" = gunakan context auth baru (simulasi re-login dengan uid yang sama)
+    const freshCtx = testEnv.authenticatedContext('mhs1');
+    const freshDb = freshCtx.database();
+
+    const indexSnap = await assertSucceeds(
+      freshDb.ref('users/mhs1/attendanceSessionIds').once('value')
+    );
+    assert.ok(indexSnap.val() !== null, 'Index harus ada setelah re-login');
+
+    const attSnap = await assertSucceeds(
+      freshDb.ref('attendance/sesi1/mhs1').once('value')
+    );
+    assert.ok(attSnap.val() !== null, 'Attendance harus tetap ada');
+  });
+
+  it('18. Mahasiswa hanya dapat menulis index miliknya setelah attendance ada', async () => {
+    // Seed attendance mhs1 di sesi1
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      await db.ref('attendance/sesi1/mhs1').set({
+        sessionId: 'sesi1',
+        studentId: 'mhs1',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+
+    // mhs1 menulis index miliknya sendiri setelah attendance ada -> SUCCEED
+    await assertSucceeds(
+      mhs1Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
+    );
+  });
+
+  it('19. Mahasiswa tidak dapat menambahkan session ID palsu (tanpa attendance)', async () => {
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+
+    // Tidak ada attendance/sesi1/mhs1 — index tidak boleh ditulis
+    await assertFails(
+      mhs1Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
+    );
+
+    // Session tidak ada sama sekali
+    await assertFails(
+      mhs1Db.ref('users/mhs1/attendanceSessionIds/sesipalsu').set(true)
+    );
+  });
+
+  it('20. Mahasiswa tidak dapat menulis index milik mahasiswa lain', async () => {
+    // Seed attendance mhs1 di sesi1
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      await db.ref('attendance/sesi1/mhs1').set({
+        sessionId: 'sesi1',
+        studentId: 'mhs1',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+
+    // mhs1 mencoba menulis index milik mhs2 -> FAIL
+    await assertFails(
+      mhs1Db.ref('users/mhs2/attendanceSessionIds/sesi1').set(true)
+    );
+  });
+
+  it('21. Dosen pemilik sesi dapat menambahkan index setelah koreksi', async () => {
+    // Seed: dosen1 sudah membuat attendance mhs2 via koreksi
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      await db.ref('attendance/sesi1/mhs2').set({
+        sessionId: 'sesi1',
+        studentId: 'mhs2',
+        status: 'Alpha',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const dosen1Db = testEnv.authenticatedContext('dosen1').database();
+
+    // Dosen1 menulis index mhs2 untuk sesi1 (sesi miliknya) -> SUCCEED
+    await assertSucceeds(
+      dosen1Db.ref('users/mhs2/attendanceSessionIds/sesi1').set(true)
+    );
+  });
+
+  it('22. Dosen lain tidak dapat menulis index mahasiswa pada sesi yang bukan miliknya', async () => {
+    // Seed: attendance mhs1 di sesi1 (milik dosen1) dan sesi2 (milik dosen2)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      await db.ref('attendance/sesi1/mhs1').set({
+        sessionId: 'sesi1',
+        studentId: 'mhs1',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+      // dosen2 juga mengoreksi mhs1 di sesi2 miliknya
+      await db.ref('attendance/sesi2/mhs1').set({
+        sessionId: 'sesi2',
+        studentId: 'mhs1',
+        status: 'Alpha',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const dosen2Db = testEnv.authenticatedContext('dosen2').database();
+
+    // Dosen2 mencoba menulis index mhs1 untuk sesi1 (sesi milik dosen1) -> FAIL
+    await assertFails(
+      dosen2Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
+    );
+
+    // Dosen2 boleh menulis index mhs1 untuk sesi2 (sesi miliknya sendiri) -> SUCCEED
+    // Ini skenario sah: dosen2 melakukan koreksi pada sesi2 untuk mhs1
+    await assertSucceeds(
+      dosen2Db.ref('users/mhs1/attendanceSessionIds/sesi2').set(true)
+    );
+  });
+
+  it('23. Akun Authentication tanpa profil gagal query kode', async () => {
+    // Pengguna dengan auth tapi tidak ada data di users/
+    const ghostDb = testEnv.authenticatedContext('ghost_uid').database();
+
+    // Query kodePresensi: harus punya role mahasiswa -> FAIL
+    const queryRef = ghostDb
+      .ref('sessions')
+      .orderByChild('kodePresensi')
+      .equalTo('ABCXYZ');
+    await assertFails(queryRef.once('value'));
+  });
+
+  it('24. Mahasiswa berhasil query kode exact-match (sudah punya profil valid)', async () => {
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+
+    // mhs1 punya profil role mahasiswa -> SUCCEED
+    const queryRef = mhs1Db
+      .ref('sessions')
+      .orderByChild('kodePresensi')
+      .equalTo('ABCXYZ');
+    const snap = await assertSucceeds(queryRef.once('value'));
+    assert.ok(snap.val() !== null);
+    assert.ok(snap.val()['sesi1'] !== undefined);
+  });
+
+  it('25. Dosen hanya berhasil query sesi miliknya sendiri', async () => {
+    const dosen1Db = testEnv.authenticatedContext('dosen1').database();
+
+    // Dosen1 query sesi miliknya -> SUCCEED
+    const queryOwn = dosen1Db
+      .ref('sessions')
+      .orderByChild('lecturerId')
+      .equalTo('dosen1');
+    const snap = await assertSucceeds(queryOwn.once('value'));
+    assert.ok(snap.val() !== null);
+
+    // Dosen1 query sesi milik dosen2 -> FAIL (equalTo !== auth.uid)
+    const queryOther = dosen1Db
+      .ref('sessions')
+      .orderByChild('lecturerId')
+      .equalTo('dosen2');
+    await assertFails(queryOther.once('value'));
+
+    // Mahasiswa tidak boleh query lecturerId -> FAIL (bukan role dosen)
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+    const queryMhs = mhs1Db
+      .ref('sessions')
+      .orderByChild('lecturerId')
+      .equalTo('dosen1');
+    await assertFails(queryMhs.once('value'));
+  });
 });

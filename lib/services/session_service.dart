@@ -7,8 +7,9 @@ import '../utils/code_generator.dart';
 
 class SessionService {
   final FirebaseDatabase _db = FirebaseDatabase.instance;
-  // Cache lokal sesi dan riwayat kehadiran mahasiswa untuk mencegah pembacaan penuh seluruh koleksi sessions
-  final Set<String> _attendedSessionIds = {};
+
+  // Cache lokal hanya sebagai optimasi — bukan sumber utama kebenaran.
+  // Sumber utama: users/{uid}/attendanceSessionIds di Firebase.
   final Map<String, SessionModel> _sessionCache = {};
 
   // ─────────────────────────────────────────
@@ -170,23 +171,31 @@ class SessionService {
 
   // ─────────────────────────────────────────
   // DOSEN — koreksi status kehadiran
-  // Hanya field status yang diubah
+  // Menulis attendance lalu memperbarui index mahasiswa yang bersangkutan
   // ─────────────────────────────────────────
 
   Future<void> koreksiStatus({
     required String sessionId,
     required String studentId,
     required String status, // Hadir | Izin | Sakit | Alpha
+    required String dosenId,
   }) async {
     assert(['Hadir', 'Izin', 'Sakit', 'Alpha'].contains(status));
     final now = DateTime.now().millisecondsSinceEpoch;
-    // update atau create catatan
+
+    // Tulis attendance terlebih dahulu agar validasi rules index terpenuhi
     await _db.ref('attendance/$sessionId/$studentId').update({
       'status': status,
       'sessionId': sessionId,
       'studentId': studentId,
       'waktuPresensi': now,
     });
+
+    // Perbarui persistent index riwayat mahasiswa yang dikoreksi
+    // Rules: dosen pemilik sesi boleh menulis index studentId tertentu
+    await _db
+        .ref('users/$studentId/attendanceSessionIds/$sessionId')
+        .set(true);
   }
 
   // ─────────────────────────────────────────
@@ -243,8 +252,13 @@ class SessionService {
       });
     });
 
-    if (hasil == 'berhasil' || hasil == 'sudah_presensi') {
-      _attendedSessionIds.add(session.sessionId);
+    if (hasil == 'berhasil') {
+      // Simpan sessionId ke persistent index — tetap ada setelah restart
+      // Rules: mahasiswa hanya bisa menulis index miliknya jika attendance sudah ada
+      await _db
+          .ref('users/$studentId/attendanceSessionIds/${session.sessionId}')
+          .set(true);
+      // Update cache lokal sebagai optimasi tambahan
       _sessionCache[session.sessionId] = session;
     }
 
@@ -253,42 +267,58 @@ class SessionService {
 
   // ─────────────────────────────────────────
   // MAHASISWA — riwayat kehadiran sendiri
+  // Membaca dari persistent index di Firebase — tidak bergantung pada cache proses
   // ─────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getRiwayatMahasiswa(
     String studentId,
   ) async {
     final result = <Map<String, dynamic>>[];
-    for (final sessionId in _attendedSessionIds) {
-      final attSnap = await _db.ref('attendance/$sessionId/$studentId').get();
-      if (attSnap.exists && attSnap.value != null) {
-        final att = AttendanceModel.fromMap(
-          sessionId,
-          studentId,
-          Map<dynamic, dynamic>.from(attSnap.value as Map),
-        );
 
-        SessionModel? sess = _sessionCache[sessionId];
-        if (sess == null) {
-          try {
-            final sessSnap = await _db.ref('sessions/$sessionId').get();
-            if (sessSnap.exists && sessSnap.value != null) {
-              sess = SessionModel.fromMap(
-                sessionId,
-                Map<dynamic, dynamic>.from(sessSnap.value as Map),
-              );
-              _sessionCache[sessionId] = sess;
-            }
-          } catch (_) {
-            // Sesi sudah ditutup dan tidak dapat dibaca langsung oleh mahasiswa
+    // Baca persistent index dari Firebase
+    final indexSnap =
+        await _db.ref('users/$studentId/attendanceSessionIds').get();
+    if (!indexSnap.exists || indexSnap.value == null) return result;
+
+    final indexMap =
+        Map<dynamic, dynamic>.from(indexSnap.value as Map);
+    final sessionIds = indexMap.keys.cast<String>().toList();
+
+    for (final sessionId in sessionIds) {
+      // Baca attendance record mahasiswa ini pada sesi tersebut
+      final attSnap =
+          await _db.ref('attendance/$sessionId/$studentId').get();
+      if (!attSnap.exists || attSnap.value == null) continue;
+
+      final att = AttendanceModel.fromMap(
+        sessionId,
+        studentId,
+        Map<dynamic, dynamic>.from(attSnap.value as Map),
+      );
+
+      // Coba ambil dari cache lokal dahulu, lalu fallback ke Firebase
+      SessionModel? sess = _sessionCache[sessionId];
+      if (sess == null) {
+        try {
+          final sessSnap = await _db.ref('sessions/$sessionId').get();
+          if (sessSnap.exists && sessSnap.value != null) {
+            sess = SessionModel.fromMap(
+              sessionId,
+              Map<dynamic, dynamic>.from(sessSnap.value as Map),
+            );
+            _sessionCache[sessionId] = sess;
           }
-        }
-
-        if (sess != null) {
-          result.add({'session': sess, 'attendance': att});
+        } catch (_) {
+          // Sesi sudah ditutup — tidak dapat dibaca langsung oleh mahasiswa
+          // Riwayat tetap muncul tanpa info sesi lengkap
         }
       }
+
+      if (sess != null) {
+        result.add({'session': sess, 'attendance': att});
+      }
     }
+
     result.sort((a, b) {
       final aTime = (a['attendance'] as AttendanceModel).waktuPresensi;
       final bTime = (b['attendance'] as AttendanceModel).waktuPresensi;

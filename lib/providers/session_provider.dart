@@ -205,6 +205,7 @@ class DosenProvider extends ChangeNotifier {
         sessionId: sessionId,
         studentId: studentId,
         status: status,
+        dosenId: user.uid,
       );
       return true;
     } catch (_) {

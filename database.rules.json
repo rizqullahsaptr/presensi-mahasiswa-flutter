@@ -7,12 +7,23 @@
       ],
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": false,
-        ".validate": "newData.hasChildren(['nama', 'email', 'identitas', 'role']) && newData.child('nama').isString() && newData.child('email').isString() && newData.child('identitas').isString() && (newData.child('role').val() === 'mahasiswa' || newData.child('role').val() === 'dosen')"
+
+        "nama": { ".write": false },
+        "email": { ".write": false },
+        "identitas": { ".write": false },
+        "role": { ".write": false },
+
+        "attendanceSessionIds": {
+          ".read": "auth != null && auth.uid === $uid",
+          "$sessionId": {
+            ".write": "auth != null && newData.val() === true && ((auth.uid === $uid && root.child('users').child(auth.uid).child('role').val() === 'mahasiswa' && root.child('attendance').child($sessionId).child(auth.uid).exists()) || (root.child('users').child(auth.uid).child('role').val() === 'dosen' && root.child('sessions').child($sessionId).child('lecturerId').val() === auth.uid))",
+            ".validate": "newData.val() === true"
+          }
+        }
       }
     },
     "sessions": {
-      ".read": "auth != null && ((query.orderByChild === 'lecturerId' && query.equalTo === auth.uid) || (query.orderByChild === 'kodePresensi' && query.equalTo != null))",
+      ".read": "auth != null && ((query.orderByChild === 'lecturerId' && query.equalTo === auth.uid && root.child('users').child(auth.uid).child('role').val() === 'dosen') || (query.orderByChild === 'kodePresensi' && query.equalTo != null && root.child('users').child(auth.uid).child('role').val() === 'mahasiswa'))",
       ".indexOn": [
         "lecturerId",
         "kodePresensi",
