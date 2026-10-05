@@ -236,40 +236,49 @@ void main() {
     });
   });
 
-  // ─────────────────────────────────────────
-  // SessionService — struktural & kontrak cache
-  // ─────────────────────────────────────────
+  group('SessionService riwayat', () {
+    test('instance baru memuat sesi ditutup melalui index persisten', () async {
+      final stored = <String, Object?>{
+        'users/mhs1/attendanceSessionIds': {'sesi2': true},
+        'attendance/sesi2/mhs1': {
+          'sessionId': 'sesi2',
+          'studentId': 'mhs1',
+          'status': 'Hadir',
+          'waktuPresensi': 1727700500000,
+        },
+        'sessions/sesi2': {
+          'judulSesi': 'Pertemuan 1 Basis Data',
+          'informasiPertemuan': 'Pengenalan SQL',
+          'lecturerId': 'dosen2',
+          'kodePresensi': 'DEFUVW',
+          'status': 'ditutup',
+          'waktuDibuat': 1727700000000,
+        },
+      };
+      final readPaths = <String>[];
+      Future<Object?> read(String path) async {
+        readPaths.add(path);
+        return stored[path];
+      }
 
-  group('SessionService Cache Contract Test', () {
-    test(
-      'Instance SessionService baru memiliki cache kosong (_sessionCache = {})',
-      () {
-        // Verifikasi bahwa setiap instance fresh tidak mewarisi cache proses sebelumnya.
-        // getRiwayatMahasiswa() wajib membaca dari Firebase (persistent index),
-        // bukan dari _sessionCache yang selalu kosong pada instance baru.
-        final service = SessionService.testInstance();
-        expect(
-          service.sessionCacheSize,
-          equals(0),
-          reason:
-              'Cache harus kosong pada instance baru — riwayat harus dibaca '
-              'dari users/{uid}/attendanceSessionIds di Firebase, bukan dari cache.',
-        );
-      },
-    );
+      final first = SessionService.withReaderForTesting(read);
+      expect((await first.getRiwayatMahasiswa('mhs1')).length, 1);
+      readPaths.clear();
 
-    test('getRiwayatMahasiswa tidak menggunakan cache sebagai sumber utama '
-        '(tidak ada cache pre-populated sebelum pemanggilan)', () {
-      // Kontrak: cache boleh diisi SETELAH fetch, bukan SEBELUM.
-      // Instance baru tidak boleh sudah punya data sesi.
-      final service = SessionService.testInstance();
+      final fresh = SessionService.withReaderForTesting(read);
+      final result = await fresh.getRiwayatMahasiswa('mhs1');
+      expect(result.length, 1);
+      expect((result.single['session'] as SessionModel).status, 'ditutup');
       expect(
-        service.sessionCacheSize,
-        equals(0),
-        reason:
-            'Tidak boleh ada session yang di-cache sebelum getRiwayatMahasiswa '
-            'dipanggil. Firebase adalah satu-satunya sumber kebenaran.',
+        (result.single['session'] as SessionModel).judulSesi,
+        'Pertemuan 1 Basis Data',
       );
+      expect((result.single['attendance'] as AttendanceModel).status, 'Hadir');
+      expect(readPaths, [
+        'users/mhs1/attendanceSessionIds',
+        'attendance/sesi2/mhs1',
+        'sessions/sesi2',
+      ]);
     });
   });
 }

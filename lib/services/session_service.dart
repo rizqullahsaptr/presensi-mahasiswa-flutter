@@ -7,26 +7,25 @@ import '../models/user_model.dart';
 import '../utils/code_generator.dart';
 
 class SessionService {
-  // Lazy init: tidak diakses saat testInstance dipakai di unit test.
   late final FirebaseDatabase _db;
+  final Future<Object?> Function(String path)? _readForTesting;
 
   // Cache lokal hanya sebagai optimasi — bukan sumber utama kebenaran.
   // Sumber utama: users/{uid}/attendanceSessionIds di Firebase.
   final Map<String, SessionModel> _sessionCache = {};
 
-  /// Constructor normal — dipakai di production (singleton via Provider).
-  SessionService() : _db = FirebaseDatabase.instance;
+  SessionService() : _readForTesting = null, _db = FirebaseDatabase.instance;
 
-  /// Constructor khusus untuk unit test: tidak menyentuh Firebase sama sekali.
-  /// Digunakan untuk memverifikasi bahwa cache selalu kosong pada instance baru.
   @visibleForTesting
-  SessionService.testInstance();
+  SessionService.withReaderForTesting(
+    Future<Object?> Function(String path) read,
+  ) : _readForTesting = read;
 
-  /// Jumlah sesi yang saat ini ada di cache lokal.
-  /// Selalu 0 pada instance baru — digunakan oleh unit test untuk memastikan
-  /// getRiwayatMahasiswa() tidak bergantung pada cache proses sebelumnya.
-  @visibleForTesting
-  int get sessionCacheSize => _sessionCache.length;
+  Future<Object?> _readValue(String path) async {
+    if (_readForTesting != null) return _readForTesting(path);
+    final snapshot = await _db.ref(path).get();
+    return snapshot.value;
+  }
 
   // ─────────────────────────────────────────
   // DOSEN — membuat sesi
@@ -62,8 +61,15 @@ class SessionService {
 
   Future<void> bukaSesi(String sessionId) async {
     final now = DateTime.now().millisecondsSinceEpoch;
+    final session = await _db.ref('sessions/$sessionId').get();
+    if (!session.exists || session.child('kodePresensi').value == null) {
+      throw StateError(
+        'Sesi tidak ditemukan atau kode presensi tidak tersedia',
+      );
+    }
     await _db.ref('sessions/$sessionId').update({
       'status': 'aktif',
+      'kodePresensiAktif': session.child('kodePresensi').value,
       'waktuDibuka': now,
     });
   }
@@ -76,6 +82,7 @@ class SessionService {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db.ref('sessions/$sessionId').update({
       'status': 'ditutup',
+      'kodePresensiAktif': null,
       'waktuDitutup': now,
     });
   }
@@ -219,7 +226,7 @@ class SessionService {
   Future<SessionModel?> cariSesiDenganKode(String kode) async {
     final snap = await _db
         .ref('sessions')
-        .orderByChild('kodePresensi')
+        .orderByChild('kodePresensiAktif')
         .equalTo(kode.trim().toUpperCase())
         .limitToFirst(1)
         .get();
@@ -290,40 +297,35 @@ class SessionService {
     final result = <Map<String, dynamic>>[];
 
     // Baca persistent index dari Firebase
-    final indexSnap = await _db
-        .ref('users/$studentId/attendanceSessionIds')
-        .get();
-    if (!indexSnap.exists || indexSnap.value == null) return result;
+    final indexValue = await _readValue(
+      'users/$studentId/attendanceSessionIds',
+    );
+    if (indexValue == null) return result;
 
-    final indexMap = Map<dynamic, dynamic>.from(indexSnap.value as Map);
+    final indexMap = Map<dynamic, dynamic>.from(indexValue as Map);
     final sessionIds = indexMap.keys.cast<String>().toList();
 
     for (final sessionId in sessionIds) {
       // Baca attendance record mahasiswa ini pada sesi tersebut
-      final attSnap = await _db.ref('attendance/$sessionId/$studentId').get();
-      if (!attSnap.exists || attSnap.value == null) continue;
+      final attValue = await _readValue('attendance/$sessionId/$studentId');
+      if (attValue == null) continue;
 
       final att = AttendanceModel.fromMap(
         sessionId,
         studentId,
-        Map<dynamic, dynamic>.from(attSnap.value as Map),
+        Map<dynamic, dynamic>.from(attValue as Map),
       );
 
       // Coba ambil dari cache lokal dahulu, lalu fallback ke Firebase
       SessionModel? sess = _sessionCache[sessionId];
       if (sess == null) {
-        try {
-          final sessSnap = await _db.ref('sessions/$sessionId').get();
-          if (sessSnap.exists && sessSnap.value != null) {
-            sess = SessionModel.fromMap(
-              sessionId,
-              Map<dynamic, dynamic>.from(sessSnap.value as Map),
-            );
-            _sessionCache[sessionId] = sess;
-          }
-        } catch (_) {
-          // Sesi sudah ditutup — tidak dapat dibaca langsung oleh mahasiswa
-          // Riwayat tetap muncul tanpa info sesi lengkap
+        final sessValue = await _readValue('sessions/$sessionId');
+        if (sessValue != null) {
+          sess = SessionModel.fromMap(
+            sessionId,
+            Map<dynamic, dynamic>.from(sessValue as Map),
+          );
+          _sessionCache[sessionId] = sess;
         }
       }
 

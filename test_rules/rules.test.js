@@ -67,6 +67,7 @@ beforeEach(async () => {
       informasiPertemuan: 'Pengenalan Flutter',
       lecturerId: 'dosen1',
       kodePresensi: 'ABCXYZ',
+      kodePresensiAktif: 'ABCXYZ',
       status: 'aktif',
       waktuDibuat: Date.now(),
       waktuDibuka: Date.now(),
@@ -96,7 +97,7 @@ describe('Firebase Realtime Database Security Rules Test Suite', () => {
     const mhsDb = testEnv.authenticatedContext('mhs1').database();
     const queryRef = mhsDb
       .ref('sessions')
-      .orderByChild('kodePresensi')
+      .orderByChild('kodePresensiAktif')
       .equalTo('ABCXYZ');
     const snap = await assertSucceeds(queryRef.once('value'));
     const val = snap.val();
@@ -346,6 +347,7 @@ describe('Firebase Realtime Database Security Rules Test Suite', () => {
     await assertSucceeds(
       dosen1Db.ref('sessions/sesi1').update({
         status: 'ditutup',
+        kodePresensiAktif: null,
         waktuDitutup: Date.now(),
       })
     );
@@ -540,7 +542,7 @@ describe('Firebase Realtime Database Security Rules Test Suite', () => {
     // Query kodePresensi: harus punya role mahasiswa -> FAIL
     const queryRef = ghostDb
       .ref('sessions')
-      .orderByChild('kodePresensi')
+      .orderByChild('kodePresensiAktif')
       .equalTo('ABCXYZ');
     await assertFails(queryRef.once('value'));
   });
@@ -551,7 +553,7 @@ describe('Firebase Realtime Database Security Rules Test Suite', () => {
     // mhs1 punya profil role mahasiswa -> SUCCEED
     const queryRef = mhs1Db
       .ref('sessions')
-      .orderByChild('kodePresensi')
+      .orderByChild('kodePresensiAktif')
       .equalTo('ABCXYZ');
     const snap = await assertSucceeds(queryRef.once('value'));
     assert.ok(snap.val() !== null);
@@ -664,5 +666,122 @@ describe('Firebase Realtime Database Security Rules Test Suite', () => {
     await assertSucceeds(
       mhs1Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
     );
+  });
+
+  // ─────────────────────────────────────────
+  // SKENARIO BARU: Riwayat — sesi ditutup hanya bisa dibaca jika ada attendance
+  // ─────────────────────────────────────────
+
+  it('31. Mahasiswa yang mempunyai attendance berhasil membaca detail sesi ditutup', async () => {
+    // Seed: sesi2 sudah ditutup (seed beforeEach), attendance mhs1 di sesi2
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref('attendance/sesi2/mhs1').set({
+        sessionId: 'sesi2',
+        studentId: 'mhs1',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+
+    // sesi2 status 'ditutup', tapi mhs1 punya attendance -> SUCCEED
+    const snap = await assertSucceeds(
+      mhs1Db.ref('sessions/sesi2').once('value')
+    );
+    assert.ok(snap.val() !== null);
+    assert.strictEqual(snap.val().status, 'ditutup');
+  });
+
+  it('32. Mahasiswa tanpa attendance gagal membaca detail sesi ditutup', async () => {
+    // mhs2 tidak punya attendance di sesi2 — sesi2 status 'ditutup'
+    const mhs2Db = testEnv.authenticatedContext('mhs2').database();
+
+    await assertFails(
+      mhs2Db.ref('sessions/sesi2').once('value')
+    );
+  });
+
+  it('33. Akun tanpa profil gagal membaca sesi ditutup walau memiliki attendance', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref('attendance/sesi2/ghost_uid').set({
+        sessionId: 'sesi2', studentId: 'ghost_uid', status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+    });
+    const ghostDb = testEnv.authenticatedContext('ghost_uid').database();
+    await assertFails(ghostDb.ref('sessions/sesi2').once('value'));
+  });
+
+  it('34. Dosen pemilik berhasil membaca sesi ditutup miliknya', async () => {
+    // sesi2 milik dosen2, status 'ditutup'
+    const dosen2Db = testEnv.authenticatedContext('dosen2').database();
+
+    const snap = await assertSucceeds(
+      dosen2Db.ref('sessions/sesi2').once('value')
+    );
+    assert.ok(snap.val() !== null);
+    assert.strictEqual(snap.val().lecturerId, 'dosen2');
+  });
+
+  it('35. getRiwayatMahasiswa simulasi — instance baru berhasil membaca sesi ditutup via attendance', async () => {
+    // Seed: attendance mhs1 di sesi2 (ditutup) + index persisten
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.database();
+      await db.ref('attendance/sesi2/mhs1').set({
+        sessionId: 'sesi2',
+        studentId: 'mhs1',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+      await db.ref('users/mhs1/attendanceSessionIds/sesi2').set(true);
+    });
+
+    // Simulasi instance service baru (fresh context, tanpa cache)
+    const freshDb = testEnv.authenticatedContext('mhs1').database();
+
+    // 1. Baca index dari Firebase
+    const indexSnap = await assertSucceeds(
+      freshDb.ref('users/mhs1/attendanceSessionIds').once('value')
+    );
+    assert.ok(indexSnap.val() !== null);
+    assert.ok(indexSnap.val()['sesi2'] === true);
+
+    // 2. Baca attendance
+    const attSnap = await assertSucceeds(
+      freshDb.ref('attendance/sesi2/mhs1').once('value')
+    );
+    assert.ok(attSnap.val() !== null);
+    assert.strictEqual(attSnap.val().status, 'Hadir');
+
+    // 3. Baca detail sesi ditutup — KUNCI: harus berhasil karena attendance ada
+    const sessSnap = await assertSucceeds(
+      freshDb.ref('sessions/sesi2').once('value')
+    );
+    assert.ok(sessSnap.val() !== null);
+    assert.strictEqual(sessSnap.val().status, 'ditutup');
+    assert.strictEqual(sessSnap.val().judulSesi, 'Pertemuan 1 Basis Data');
+  });
+
+  it('36. Pencarian kode tidak membocorkan sesi ditutup lewat izin parent', async () => {
+    const db = testEnv.authenticatedContext('mhs1').database();
+    await assertFails(db.ref('sessions').orderByChild('kodePresensi').equalTo('DEFUVW').once('value'));
+    const snap = await assertSucceeds(
+      db.ref('sessions').orderByChild('kodePresensiAktif').equalTo('DEFUVW').once('value')
+    );
+    assert.strictEqual(snap.val(), null);
+  });
+
+  it('37. Dosen tidak dapat menyimpan kode aktif pada sesi ditutup', async () => {
+    const db = testEnv.authenticatedContext('dosen2').database();
+    await assertFails(db.ref('sessions/sesi2').update({ kodePresensiAktif: 'DEFUVW' }));
+  });
+
+  it('38. Akun tanpa profil tidak boleh menyamar sebagai dosen pemilik sesi', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref('sessions/sesi2/lecturerId').set('ghost_uid');
+    });
+    const db = testEnv.authenticatedContext('ghost_uid').database();
+    await assertFails(db.ref('sessions/sesi2').once('value'));
   });
 });
