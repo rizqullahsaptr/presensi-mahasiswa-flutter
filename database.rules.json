@@ -12,20 +12,21 @@
       }
     },
     "sessions": {
-      ".read": "auth != null",
+      ".read": "auth != null && ((query.orderByChild === 'lecturerId' && query.equalTo === auth.uid) || (query.orderByChild === 'kodePresensi' && query.equalTo != null))",
       ".indexOn": [
         "lecturerId",
         "kodePresensi",
         "status"
       ],
       "$sessionId": {
+        ".read": "auth != null && (data.child('lecturerId').val() === auth.uid || (root.child('users').child(auth.uid).child('role').val() === 'mahasiswa' && data.child('status').val() === 'aktif'))",
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'dosen' && ((!data.exists() && newData.child('lecturerId').val() === auth.uid) || (data.exists() && data.child('lecturerId').val() === auth.uid && newData.child('lecturerId').val() === data.child('lecturerId').val()))",
         ".validate": "newData.hasChildren(['judulSesi', 'informasiPertemuan', 'lecturerId', 'kodePresensi', 'status', 'waktuDibuat']) && newData.child('judulSesi').isString() && newData.child('judulSesi').val().length > 0 && newData.child('informasiPertemuan').isString() && newData.child('lecturerId').isString() && newData.child('kodePresensi').isString() && newData.child('kodePresensi').val().length === 6 && (newData.child('status').val() === 'aktif' || newData.child('status').val() === 'ditutup') && newData.child('waktuDibuat').isNumber() && (!newData.hasChild('waktuDibuka') || newData.child('waktuDibuka').isNumber()) && (!newData.hasChild('waktuDitutup') || newData.child('waktuDitutup').isNumber())"
       }
     },
     "attendance": {
       "$sessionId": {
-        ".read": "auth != null && (root.child('sessions').child($sessionId).child('lecturerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'dosen')",
+        ".read": "auth != null && root.child('sessions').child($sessionId).child('lecturerId').val() === auth.uid",
         ".indexOn": [
           "studentId",
           "status"

@@ -7,6 +7,9 @@ import '../utils/code_generator.dart';
 
 class SessionService {
   final FirebaseDatabase _db = FirebaseDatabase.instance;
+  // Cache lokal sesi dan riwayat kehadiran mahasiswa untuk mencegah pembacaan penuh seluruh koleksi sessions
+  final Set<String> _attendedSessionIds = {};
+  final Map<String, SessionModel> _sessionCache = {};
 
   // ─────────────────────────────────────────
   // DOSEN — membuat sesi
@@ -200,10 +203,12 @@ class SessionService {
     if (!snap.exists || snap.value == null) return null;
     final map = Map<dynamic, dynamic>.from(snap.value as Map);
     final entry = map.entries.first;
-    return SessionModel.fromMap(
+    final model = SessionModel.fromMap(
       entry.key as String,
       Map<dynamic, dynamic>.from(entry.value as Map),
     );
+    _sessionCache[model.sessionId] = model;
+    return model;
   }
 
   // ─────────────────────────────────────────
@@ -238,6 +243,11 @@ class SessionService {
       });
     });
 
+    if (hasil == 'berhasil' || hasil == 'sudah_presensi') {
+      _attendedSessionIds.add(session.sessionId);
+      _sessionCache[session.sessionId] = session;
+    }
+
     return hasil;
   }
 
@@ -248,14 +258,8 @@ class SessionService {
   Future<List<Map<String, dynamic>>> getRiwayatMahasiswa(
     String studentId,
   ) async {
-    // Ambil semua sesi, lalu filter yang punya catatan kehadiran studentId ini
-    final sessSnap = await _db.ref('sessions').get();
     final result = <Map<String, dynamic>>[];
-    if (!sessSnap.exists || sessSnap.value == null) return result;
-
-    final sessMap = Map<dynamic, dynamic>.from(sessSnap.value as Map);
-    for (final e in sessMap.entries) {
-      final sessionId = e.key as String;
+    for (final sessionId in _attendedSessionIds) {
       final attSnap = await _db.ref('attendance/$sessionId/$studentId').get();
       if (attSnap.exists && attSnap.value != null) {
         final att = AttendanceModel.fromMap(
@@ -263,11 +267,26 @@ class SessionService {
           studentId,
           Map<dynamic, dynamic>.from(attSnap.value as Map),
         );
-        final sess = SessionModel.fromMap(
-          sessionId,
-          Map<dynamic, dynamic>.from(e.value as Map),
-        );
-        result.add({'session': sess, 'attendance': att});
+
+        SessionModel? sess = _sessionCache[sessionId];
+        if (sess == null) {
+          try {
+            final sessSnap = await _db.ref('sessions/$sessionId').get();
+            if (sessSnap.exists && sessSnap.value != null) {
+              sess = SessionModel.fromMap(
+                sessionId,
+                Map<dynamic, dynamic>.from(sessSnap.value as Map),
+              );
+              _sessionCache[sessionId] = sess;
+            }
+          } catch (_) {
+            // Sesi sudah ditutup dan tidak dapat dibaca langsung oleh mahasiswa
+          }
+        }
+
+        if (sess != null) {
+          result.add({'session': sess, 'attendance': att});
+        }
       }
     }
     result.sort((a, b) {
