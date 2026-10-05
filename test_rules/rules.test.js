@@ -584,4 +584,85 @@ describe('Firebase Realtime Database Security Rules Test Suite', () => {
       .equalTo('dosen1');
     await assertFails(queryMhs.once('value'));
   });
+
+  // ─────────────────────────────────────────
+  // SKENARIO BARU: Validasi attendance record wajib ada + sessionId/studentId cocok
+  // ─────────────────────────────────────────
+
+  it('26. Dosen pemilik gagal menambah index sebelum attendance dibuat', async () => {
+    // belum ada attendance/sesi1/mhs1 sama sekali (beforeEach sudah reset)
+    const dosen1Db = testEnv.authenticatedContext('dosen1').database();
+
+    // attendance belum ada -> FAIL meski dosen adalah pemilik sesi
+    await assertFails(
+      dosen1Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
+    );
+  });
+
+  it('27. Dosen pemilik berhasil menambah index setelah attendance dibuat', async () => {
+    // Seed: dosen1 sudah menulis attendance mhs1 di sesi1 (via koreksi)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref('attendance/sesi1/mhs1').set({
+        sessionId: 'sesi1',
+        studentId: 'mhs1',
+        status: 'Alpha',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const dosen1Db = testEnv.authenticatedContext('dosen1').database();
+
+    // attendance sudah ada + sessionId/studentId cocok -> SUCCEED
+    await assertSucceeds(
+      dosen1Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
+    );
+  });
+
+  it('28. Dosen gagal menambah index pada profil dengan role dosen', async () => {
+    // Seed: attendance sesi1/dosen2 — target $uid adalah dosen2 (role dosen)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref('attendance/sesi1/dosen2').set({
+        sessionId: 'sesi1',
+        studentId: 'dosen2',
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const dosen1Db = testEnv.authenticatedContext('dosen1').database();
+
+    // Target $uid = dosen2 yang role-nya 'dosen', bukan 'mahasiswa' -> FAIL
+    await assertFails(
+      dosen1Db.ref('users/dosen2/attendanceSessionIds/sesi1').set(true)
+    );
+  });
+
+  it('29. Mahasiswa gagal menambah index jika attendance belum ada', async () => {
+    // beforeEach sudah reset — tidak ada attendance sama sekali
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+
+    // Tidak ada attendance/sesi1/mhs1 -> FAIL
+    await assertFails(
+      mhs1Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
+    );
+  });
+
+  it('30. Mahasiswa berhasil menambah index setelah attendance miliknya ada (sessionId & studentId cocok)', async () => {
+    // Seed: attendance mhs1 di sesi1 dengan sessionId dan studentId yang benar
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.database().ref('attendance/sesi1/mhs1').set({
+        sessionId: 'sesi1',   // cocok dengan $sessionId
+        studentId: 'mhs1',    // cocok dengan $uid
+        status: 'Hadir',
+        waktuPresensi: Date.now(),
+      });
+    });
+
+    const mhs1Db = testEnv.authenticatedContext('mhs1').database();
+
+    // attendance ada + sessionId === $sessionId + studentId === $uid -> SUCCEED
+    await assertSucceeds(
+      mhs1Db.ref('users/mhs1/attendanceSessionIds/sesi1').set(true)
+    );
+  });
 });

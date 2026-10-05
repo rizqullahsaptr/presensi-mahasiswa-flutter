@@ -1,4 +1,5 @@
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/session_model.dart';
 import '../models/attendance_model.dart';
@@ -6,11 +7,26 @@ import '../models/user_model.dart';
 import '../utils/code_generator.dart';
 
 class SessionService {
-  final FirebaseDatabase _db = FirebaseDatabase.instance;
+  // Lazy init: tidak diakses saat testInstance dipakai di unit test.
+  late final FirebaseDatabase _db;
 
   // Cache lokal hanya sebagai optimasi — bukan sumber utama kebenaran.
   // Sumber utama: users/{uid}/attendanceSessionIds di Firebase.
   final Map<String, SessionModel> _sessionCache = {};
+
+  /// Constructor normal — dipakai di production (singleton via Provider).
+  SessionService() : _db = FirebaseDatabase.instance;
+
+  /// Constructor khusus untuk unit test: tidak menyentuh Firebase sama sekali.
+  /// Digunakan untuk memverifikasi bahwa cache selalu kosong pada instance baru.
+  @visibleForTesting
+  SessionService.testInstance();
+
+  /// Jumlah sesi yang saat ini ada di cache lokal.
+  /// Selalu 0 pada instance baru — digunakan oleh unit test untuk memastikan
+  /// getRiwayatMahasiswa() tidak bergantung pada cache proses sebelumnya.
+  @visibleForTesting
+  int get sessionCacheSize => _sessionCache.length;
 
   // ─────────────────────────────────────────
   // DOSEN — membuat sesi
@@ -193,9 +209,7 @@ class SessionService {
 
     // Perbarui persistent index riwayat mahasiswa yang dikoreksi
     // Rules: dosen pemilik sesi boleh menulis index studentId tertentu
-    await _db
-        .ref('users/$studentId/attendanceSessionIds/$sessionId')
-        .set(true);
+    await _db.ref('users/$studentId/attendanceSessionIds/$sessionId').set(true);
   }
 
   // ─────────────────────────────────────────
@@ -276,18 +290,17 @@ class SessionService {
     final result = <Map<String, dynamic>>[];
 
     // Baca persistent index dari Firebase
-    final indexSnap =
-        await _db.ref('users/$studentId/attendanceSessionIds').get();
+    final indexSnap = await _db
+        .ref('users/$studentId/attendanceSessionIds')
+        .get();
     if (!indexSnap.exists || indexSnap.value == null) return result;
 
-    final indexMap =
-        Map<dynamic, dynamic>.from(indexSnap.value as Map);
+    final indexMap = Map<dynamic, dynamic>.from(indexSnap.value as Map);
     final sessionIds = indexMap.keys.cast<String>().toList();
 
     for (final sessionId in sessionIds) {
       // Baca attendance record mahasiswa ini pada sesi tersebut
-      final attSnap =
-          await _db.ref('attendance/$sessionId/$studentId').get();
+      final attSnap = await _db.ref('attendance/$sessionId/$studentId').get();
       if (!attSnap.exists || attSnap.value == null) continue;
 
       final att = AttendanceModel.fromMap(

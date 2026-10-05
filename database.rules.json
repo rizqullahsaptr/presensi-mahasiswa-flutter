@@ -16,7 +16,7 @@
         "attendanceSessionIds": {
           ".read": "auth != null && auth.uid === $uid",
           "$sessionId": {
-            ".write": "auth != null && newData.val() === true && ((auth.uid === $uid && root.child('users').child(auth.uid).child('role').val() === 'mahasiswa' && root.child('attendance').child($sessionId).child(auth.uid).exists()) || (root.child('users').child(auth.uid).child('role').val() === 'dosen' && root.child('sessions').child($sessionId).child('lecturerId').val() === auth.uid))",
+            ".write": "auth != null && newData.val() === true && root.child('users').child($uid).child('role').val() === 'mahasiswa' && root.child('attendance').child($sessionId).child($uid).exists() && root.child('attendance').child($sessionId).child($uid).child('sessionId').val() === $sessionId && root.child('attendance').child($sessionId).child($uid).child('studentId').val() === $uid && ((auth.uid === $uid) || (root.child('users').child(auth.uid).child('role').val() === 'dosen' && root.child('sessions').child($sessionId).child('lecturerId').val() === auth.uid))",
             ".validate": "newData.val() === true"
           }
         }

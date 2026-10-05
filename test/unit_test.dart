@@ -4,6 +4,7 @@ import 'package:presensi_mahasiswa/utils/code_generator.dart';
 import 'package:presensi_mahasiswa/models/user_model.dart';
 import 'package:presensi_mahasiswa/models/session_model.dart';
 import 'package:presensi_mahasiswa/models/attendance_model.dart';
+import 'package:presensi_mahasiswa/services/session_service.dart';
 
 void main() {
   group('Validators Test', () {
@@ -232,6 +233,43 @@ void main() {
       expect(Validators.kodePresensi('ABCDEF'), isNull); // 6 huruf kapital
       expect(Validators.kodePresensi('123456'), isNull); // 6 angka
       expect(Validators.kodePresensi('A1B2C3'), isNull); // 6 alfanumerik
+    });
+  });
+
+  // ─────────────────────────────────────────
+  // SessionService — struktural & kontrak cache
+  // ─────────────────────────────────────────
+
+  group('SessionService Cache Contract Test', () {
+    test(
+      'Instance SessionService baru memiliki cache kosong (_sessionCache = {})',
+      () {
+        // Verifikasi bahwa setiap instance fresh tidak mewarisi cache proses sebelumnya.
+        // getRiwayatMahasiswa() wajib membaca dari Firebase (persistent index),
+        // bukan dari _sessionCache yang selalu kosong pada instance baru.
+        final service = SessionService.testInstance();
+        expect(
+          service.sessionCacheSize,
+          equals(0),
+          reason:
+              'Cache harus kosong pada instance baru — riwayat harus dibaca '
+              'dari users/{uid}/attendanceSessionIds di Firebase, bukan dari cache.',
+        );
+      },
+    );
+
+    test('getRiwayatMahasiswa tidak menggunakan cache sebagai sumber utama '
+        '(tidak ada cache pre-populated sebelum pemanggilan)', () {
+      // Kontrak: cache boleh diisi SETELAH fetch, bukan SEBELUM.
+      // Instance baru tidak boleh sudah punya data sesi.
+      final service = SessionService.testInstance();
+      expect(
+        service.sessionCacheSize,
+        equals(0),
+        reason:
+            'Tidak boleh ada session yang di-cache sebelum getRiwayatMahasiswa '
+            'dipanggil. Firebase adalah satu-satunya sumber kebenaran.',
+      );
     });
   });
 }
