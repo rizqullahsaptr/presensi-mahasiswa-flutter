@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' show User;
 import 'package:flutter/material.dart';
 
 import '../models/user_model.dart';
@@ -7,9 +10,15 @@ enum AuthStatus { loading, authenticated, unauthenticated }
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService;
+  late final StreamSubscription<User?> _authSubscription;
+  int _revision = 0;
+  bool _disposed = false;
+  bool _loginInProgress = false;
 
   AuthProvider(this._authService) {
-    _init();
+    _authSubscription = _authService.authStateChanges.listen(
+      _onAuthStateChanged,
+    );
   }
 
   AuthStatus _status = AuthStatus.loading;
@@ -22,48 +31,94 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isLoading => _status == AuthStatus.loading;
 
-  void _init() {
-    _authService.authStateChanges.listen((firebaseUser) async {
-      if (firebaseUser == null) {
-        _status = AuthStatus.unauthenticated;
-        _user = null;
-        notifyListeners();
-      } else {
-        // Coba fetch profil; jika gagal (no role/profile), logout
-        final profile = await _authService.getCurrentUserProfile();
-        if (profile == null) {
+  void _onAuthStateChanged(User? firebaseUser) {
+    if (_disposed) return;
+    if (firebaseUser == null) {
+      ++_revision;
+      _loginInProgress = false;
+      _user = null;
+      _status = AuthStatus.unauthenticated;
+      _errorMessage = null;
+      notifyListeners();
+    } else if (!_loginInProgress) {
+      final revision = ++_revision;
+      _loadProfile(revision);
+    }
+  }
+
+  Future<void> _loadProfile(int revision) async {
+    try {
+      final profile = await _authService.getCurrentUserProfile();
+      if (_disposed || revision != _revision) return;
+      if (profile == null) {
+        if (_authService.currentUser != null) {
           await _authService.logout();
-          _status = AuthStatus.unauthenticated;
-          _user = null;
-        } else {
-          _status = AuthStatus.authenticated;
-          _user = profile;
+          if (_disposed || revision != _revision) return;
         }
-        notifyListeners();
+        _user = null;
+        _status = AuthStatus.unauthenticated;
+      } else {
+        _user = profile;
+        _status = AuthStatus.authenticated;
+        _errorMessage = null;
       }
-    });
+    } on InvalidUserProfileException catch (e) {
+      if (_disposed || revision != _revision) return;
+      _user = null;
+      _status = AuthStatus.unauthenticated;
+      _errorMessage = _mapError(e.toString());
+    } catch (e) {
+      if (_disposed || revision != _revision) return;
+      // A failed database read must not revoke a valid Firebase session.
+      _status = _user == null
+          ? AuthStatus.unauthenticated
+          : AuthStatus.authenticated;
+      _errorMessage = _mapError(e.toString());
+    }
+    if (!_disposed && revision == _revision) notifyListeners();
   }
 
   Future<void> login(String email, String password) async {
+    final revision = ++_revision;
+    _loginInProgress = true;
     _errorMessage = null;
     _status = AuthStatus.loading;
     notifyListeners();
 
     try {
-      _user = await _authService.login(email, password);
+      final profile = await _authService.login(email, password);
+      if (_disposed || revision != _revision) return;
+      _user = profile;
       _status = AuthStatus.authenticated;
     } on Exception catch (e) {
+      if (_disposed || revision != _revision) return;
+      _user = null;
       _status = AuthStatus.unauthenticated;
       _errorMessage = _mapError(e.toString());
+    } finally {
+      if (!_disposed && revision == _revision) {
+        _loginInProgress = false;
+        notifyListeners();
+      }
     }
-    notifyListeners();
   }
 
   Future<void> logout() async {
+    final revision = ++_revision;
     await _authService.logout();
+    if (_disposed || revision != _revision) return;
     _user = null;
     _status = AuthStatus.unauthenticated;
+    _errorMessage = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    ++_revision;
+    _authSubscription.cancel();
+    super.dispose();
   }
 
   String _mapError(String raw) {

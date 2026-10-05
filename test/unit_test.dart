@@ -280,5 +280,40 @@ void main() {
         'sessions/sesi2',
       ]);
     });
+
+    test('riwayat membaca status sesi terbaru setelah sesi ditutup', () async {
+      final stored = <String, Object?>{
+        'users/mhs1/attendanceSessionIds': {'sesi2': true},
+        'attendance/sesi2/mhs1': {
+          'sessionId': 'sesi2',
+          'studentId': 'mhs1',
+          'status': 'Hadir',
+          'waktuPresensi': 1000,
+        },
+        'sessions/sesi2': {
+          'judulSesi': 'Basis Data',
+          'informasiPertemuan': 'SQL',
+          'lecturerId': 'dosen2',
+          'kodePresensi': 'DEFUVW',
+          'status': 'aktif',
+          'waktuDibuat': 500,
+        },
+      };
+      final service = SessionService.withReaderForTesting(
+        (path) async => stored[path],
+      );
+      expect(
+        (await service.getRiwayatMahasiswa('mhs1')).single['session'],
+        isA<SessionModel>().having((s) => s.status, 'status', 'aktif'),
+      );
+      stored['sessions/sesi2'] = {
+        ...stored['sessions/sesi2'] as Map<String, Object?>,
+        'status': 'ditutup',
+      };
+      expect(
+        (await service.getRiwayatMahasiswa('mhs1')).single['session'],
+        isA<SessionModel>().having((s) => s.status, 'status', 'ditutup'),
+      );
+    });
   });
 }

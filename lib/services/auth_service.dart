@@ -3,6 +3,14 @@ import 'package:firebase_database/firebase_database.dart';
 
 import '../models/user_model.dart';
 
+class InvalidUserProfileException implements Exception {
+  const InvalidUserProfileException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseDatabase _db = FirebaseDatabase.instance;
@@ -27,15 +35,23 @@ class AuthService {
     final snap = await _db.ref('users/$uid').get();
     if (!snap.exists || snap.value == null) {
       await _auth.signOut();
-      throw Exception(
+      throw const InvalidUserProfileException(
         'Profil pengguna tidak ditemukan. Hubungi administrator.',
       );
     }
-    final map = Map<dynamic, dynamic>.from(snap.value as Map);
-    final user = UserModel.fromMap(uid, map);
+    final value = snap.value;
+    if (value is! Map ||
+        value['nama'] is! String ||
+        value['email'] is! String ||
+        value['identitas'] is! String ||
+        value['role'] is! String) {
+      await _auth.signOut();
+      throw const InvalidUserProfileException('Profil pengguna tidak valid.');
+    }
+    final user = UserModel.fromMap(uid, value);
     if (user.role != 'mahasiswa' && user.role != 'dosen') {
       await _auth.signOut();
-      throw Exception('Role tidak valid: ${user.role}');
+      throw InvalidUserProfileException('Role tidak valid: ${user.role}');
     }
     return user;
   }
@@ -44,11 +60,7 @@ class AuthService {
   Future<UserModel?> getCurrentUserProfile() async {
     final user = _auth.currentUser;
     if (user == null) return null;
-    try {
-      return await _fetchUserProfile(user.uid);
-    } catch (_) {
-      return null;
-    }
+    return _fetchUserProfile(user.uid);
   }
 
   Future<void> logout() async {

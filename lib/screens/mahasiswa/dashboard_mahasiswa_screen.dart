@@ -127,9 +127,14 @@ class _DashboardMahasiswaScreenState extends State<DashboardMahasiswaScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
-              child: Text(
-                widget.user.nama,
-                style: const TextStyle(fontSize: 13),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 110),
+                child: Text(
+                  widget.user.nama,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
               ),
             ),
           ),

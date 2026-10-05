@@ -1,5 +1,6 @@
-// File generated from google-services.json — do not edit manually.
-// To regenerate, run: flutterfire configure
+// Konfigurasi Android disusun manual dari google-services.json yang sudah ada.
+// Upaya flutterfire configure sebelumnya tidak berhasil; cocokkan ulang nilai
+// dengan aplikasi Firebase terdaftar sebelum mengubah konfigurasi.
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'

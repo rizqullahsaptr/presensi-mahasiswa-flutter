@@ -50,3 +50,10 @@ app.*.map.json
 # Test Rules / Emulators
 test_rules/node_modules/
 test_rules/firebase-database-emulator.jar
+
+# Locally packaged binary deliverables; keep available on disk, not in Git history.
+/deliverables/app-debug.apk
+/deliverables/Presensi_Mahasiswa_Source_Final.zip
+
+# Local demonstration user seed; never publish personal account mappings.
+/firebase_seed_users.json

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 
@@ -9,17 +11,37 @@ import '../utils/code_generator.dart';
 class SessionService {
   late final FirebaseDatabase _db;
   final Future<Object?> Function(String path)? _readForTesting;
+  final Stream<Object?> Function(String path)? _watchRosterForTesting;
 
-  // Cache lokal hanya sebagai optimasi — bukan sumber utama kebenaran.
-  // Sumber utama: users/{uid}/attendanceSessionIds di Firebase.
-  final Map<String, SessionModel> _sessionCache = {};
-
-  SessionService() : _readForTesting = null, _db = FirebaseDatabase.instance;
+  SessionService()
+    : _readForTesting = null,
+      _watchRosterForTesting = null,
+      _db = FirebaseDatabase.instance;
 
   @visibleForTesting
   SessionService.withReaderForTesting(
     Future<Object?> Function(String path) read,
-  ) : _readForTesting = read;
+  ) : _readForTesting = read,
+      _watchRosterForTesting = null;
+
+  @visibleForTesting
+  SessionService.withRosterSourcesForTesting(
+    Stream<Object?> Function(String path) watch,
+  ) : _watchRosterForTesting = watch,
+      _readForTesting = null;
+
+  Stream<Object?> _watchRoster(String path) {
+    if (_watchRosterForTesting != null) return _watchRosterForTesting(path);
+    if (path == 'users') {
+      return _db
+          .ref('users')
+          .orderByChild('role')
+          .equalTo('mahasiswa')
+          .onValue
+          .map((event) => event.snapshot.value);
+    }
+    return _db.ref(path).onValue.map((event) => event.snapshot.value);
+  }
 
   Future<Object?> _readValue(String path) async {
     if (_readForTesting != null) return _readForTesting(path);
@@ -133,63 +155,90 @@ class SessionService {
   // ─────────────────────────────────────────
 
   Stream<List<AttendanceEntry>> streamKehadiranSesi(String sessionId) {
-    // Gabungkan users (mahasiswa) + attendance/{sessionId}
-    // Menggunakan StreamTransformer manual untuk merge dua query
-    return _db
-        .ref('users')
-        .orderByChild('role')
-        .equalTo('mahasiswa')
-        .onValue
-        .asyncMap((usersEvent) async {
-          final Map<String, AttendanceEntry> entries = {};
+    late final StreamController<List<AttendanceEntry>> controller;
+    StreamSubscription<Object?>? usersSubscription;
+    StreamSubscription<Object?>? attendanceSubscription;
+    Object? usersValue;
+    Object? attendanceValue;
+    var hasUsers = false;
+    var hasAttendance = false;
 
-          if (usersEvent.snapshot.exists && usersEvent.snapshot.value != null) {
-            final usersMap = Map<dynamic, dynamic>.from(
-              usersEvent.snapshot.value as Map,
+    void emitRoster() {
+      if (!hasUsers || !hasAttendance) return;
+      final entries = <String, AttendanceEntry>{};
+      if (usersValue != null) {
+        final usersMap = Map<dynamic, dynamic>.from(usersValue as Map);
+        for (final e in usersMap.entries) {
+          final uid = e.key as String;
+          final u = UserModel.fromMap(
+            uid,
+            Map<dynamic, dynamic>.from(e.value as Map),
+          );
+          entries[uid] = AttendanceEntry(
+            studentId: uid,
+            nama: u.nama,
+            identitas: u.identitas,
+            status: 'Alpha',
+            hasCatatan: false,
+          );
+        }
+      }
+      if (attendanceValue != null) {
+        final attMap = Map<dynamic, dynamic>.from(attendanceValue as Map);
+        for (final e in attMap.entries) {
+          final studentId = e.key as String;
+          final att = AttendanceModel.fromMap(
+            sessionId,
+            studentId,
+            Map<dynamic, dynamic>.from(e.value as Map),
+          );
+          final student = entries[studentId];
+          if (student != null) {
+            entries[studentId] = AttendanceEntry(
+              studentId: studentId,
+              nama: student.nama,
+              identitas: student.identitas,
+              status: att.status,
+              hasCatatan: true,
             );
-            for (final e in usersMap.entries) {
-              final uid = e.key as String;
-              final u = UserModel.fromMap(
-                uid,
-                Map<dynamic, dynamic>.from(e.value as Map),
-              );
-              entries[uid] = AttendanceEntry(
-                studentId: uid,
-                nama: u.nama,
-                identitas: u.identitas,
-                status: 'Alpha', // default jika belum ada catatan
-                hasCatatan: false,
-              );
-            }
           }
+        }
+      }
+      final list = entries.values.toList();
+      list.sort((a, b) => a.nama.compareTo(b.nama));
+      controller.add(list);
+    }
 
-          // Overlay dengan catatan kehadiran yang sudah ada
-          final attSnap = await _db.ref('attendance/$sessionId').get();
-          if (attSnap.exists && attSnap.value != null) {
-            final attMap = Map<dynamic, dynamic>.from(attSnap.value as Map);
-            for (final e in attMap.entries) {
-              final studentId = e.key as String;
-              final att = AttendanceModel.fromMap(
-                sessionId,
-                studentId,
-                Map<dynamic, dynamic>.from(e.value as Map),
-              );
-              if (entries.containsKey(studentId)) {
-                entries[studentId] = AttendanceEntry(
-                  studentId: studentId,
-                  nama: entries[studentId]!.nama,
-                  identitas: entries[studentId]!.identitas,
-                  status: att.status,
-                  hasCatatan: true,
-                );
-              }
-            }
-          }
-
-          final list = entries.values.toList();
-          list.sort((a, b) => a.nama.compareTo(b.nama));
-          return list;
-        });
+    controller = StreamController<List<AttendanceEntry>>(
+      onListen: () {
+        usersSubscription = _watchRoster('users').listen((value) {
+          usersValue = value;
+          hasUsers = true;
+          emitRoster();
+        }, onError: controller.addError);
+        attendanceSubscription = _watchRoster('attendance/$sessionId')
+            .listen((value) {
+              attendanceValue = value;
+              hasAttendance = true;
+              emitRoster();
+            }, onError: controller.addError);
+      },
+      onPause: () {
+        usersSubscription?.pause();
+        attendanceSubscription?.pause();
+      },
+      onResume: () {
+        usersSubscription?.resume();
+        attendanceSubscription?.resume();
+      },
+      onCancel: () async {
+        await Future.wait([
+          if (usersSubscription != null) usersSubscription!.cancel(),
+          if (attendanceSubscription != null) attendanceSubscription!.cancel(),
+        ]);
+      },
+    );
+    return controller.stream;
   }
 
   // ─────────────────────────────────────────
@@ -237,7 +286,6 @@ class SessionService {
       entry.key as String,
       Map<dynamic, dynamic>.from(entry.value as Map),
     );
-    _sessionCache[model.sessionId] = model;
     return model;
   }
 
@@ -279,8 +327,6 @@ class SessionService {
       await _db
           .ref('users/$studentId/attendanceSessionIds/${session.sessionId}')
           .set(true);
-      // Update cache lokal sebagai optimasi tambahan
-      _sessionCache[session.sessionId] = session;
     }
 
     return hasil;
@@ -316,18 +362,14 @@ class SessionService {
         Map<dynamic, dynamic>.from(attValue as Map),
       );
 
-      // Coba ambil dari cache lokal dahulu, lalu fallback ke Firebase
-      SessionModel? sess = _sessionCache[sessionId];
-      if (sess == null) {
-        final sessValue = await _readValue('sessions/$sessionId');
-        if (sessValue != null) {
-          sess = SessionModel.fromMap(
-            sessionId,
-            Map<dynamic, dynamic>.from(sessValue as Map),
-          );
-          _sessionCache[sessionId] = sess;
-        }
-      }
+      // Status sesi dapat berubah setelah dibuka; baca data terbaru dari Firebase.
+      final sessValue = await _readValue('sessions/$sessionId');
+      final SessionModel? sess = sessValue == null
+          ? null
+          : SessionModel.fromMap(
+              sessionId,
+              Map<dynamic, dynamic>.from(sessValue as Map),
+            );
 
       if (sess != null) {
         result.add({'session': sess, 'attendance': att});

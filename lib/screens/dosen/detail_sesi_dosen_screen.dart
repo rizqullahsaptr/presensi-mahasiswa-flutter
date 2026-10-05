@@ -338,6 +338,8 @@ class _MahasiswaRow extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         title: Text(
           entry.nama,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(

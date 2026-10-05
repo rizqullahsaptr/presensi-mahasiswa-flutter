@@ -1,115 +1,52 @@
 # Presensi Mahasiswa
 
-Aplikasi presensi mahasiswa berbasis mobile menggunakan Flutter dan Firebase Realtime Database. Proyek ini dikembangkan untuk memenuhi tugas mata kuliah **Mobile Programming H Kelompok 2**, Teknik Informatika, UIN Maulana Malik Ibrahim Malang.
+Aplikasi Flutter untuk presensi mahasiswa dengan Firebase Authentication dan Firebase Realtime Database. Proyek tugas **Mobile Programming H, Kelompok 2**, Teknik Informatika, UIN Maulana Malik Ibrahim Malang.
 
----
+## Tim
 
-## 👥 Identitas Tim
+- Dosen pengampu: SUPRIYONO, M.Kom
+- Muhammad Rizqullah Saputra — 240605110102
+- Abdul Rochim — 240605110121
+- Muhammad Raihan Fitrianto — 240605110255
 
-- **Dosen Pengampu:** SUPRIYONO, M.Kom
-- **Kelas:** Mobile Programming H
-- **Kelompok:** 2
+## Status proyek
 
-| No | Nama | NIM |
-|---|---|---|
-| 1 | Muhammad Rizqullah Saputra | 240605110102 |
-| 2 | Abdul Rochim | 240605110121 |
-| 3 | Muhammad Raihan Fitrianto | 240605110255 |
+Proyek Firebase **`presensi-mahasiswa-kelompok2` sudah ada**, bukan proyek yang perlu dibuat ulang. Aplikasi Android terdaftar dengan application ID **`com.kelompok2.mobileproh.presensi_mahasiswa`** dan Realtime Database berada di **Singapore (`asia-southeast1`)**. Firebase Authentication menggunakan email/password; tiga akun demo beserta profil `users/{uid}` sudah disiapkan. Lihat [FIREBASE_SETUP.md](FIREBASE_SETUP.md) untuk rincian konfigurasi yang sudah ada dan cara verifikasi tanpa membuat ulang akun atau menerbitkan ulang aturan.
 
----
+`lib/firebase_options.dart` disusun **secara manual dari `android/app/google-services.json`** setelah `flutterfire configure` tidak berhasil; jangan menyebutnya keluaran sukses FlutterFire CLI. Inisialisasi aplikasi menggunakan `DefaultFirebaseOptions.currentPlatform` untuk Android. **Verifikasi end-to-end pada perangkat/emulator Android masih tertunda**; pengujian unit/widget dan Security Rules tidak menggantikannya.
 
-## 📱 Ringkasan Fitur
+## Fitur yang diimplementasikan
 
-Sesuai spesifikasi **Laporan Tahap 2**, aplikasi ini membagi fungsionalitas berdasarkan 2 role:
+- **Dosen:** masuk dengan akun yang sudah ada; membuat sesi berjudul dan berinformasi pertemuan (awalnya tertutup), membuka/menutup sesi, melihat daftar sesi serta kehadiran, dan mengoreksi status menjadi **Hadir**, **Izin**, **Sakit**, atau **Alpha**.
+- **Mahasiswa:** masuk dengan akun yang sudah ada; mencari sesi aktif memakai kode **6 karakter alfanumerik kapital**, mengirim presensi **Hadir**, serta melihat riwayat dari indeks `users/{uid}/attendanceSessionIds`.
+- Kode dibuat acak dari alfabet terbatas di `lib/utils/code_generator.dart`. **Tidak ada pemeriksaan keunikan global** sebelum sesi dibuat; jangan menganggap benturan kode mustahil. Pencarian memakai `kodePresensiAktif` yang hanya ada saat sesi aktif. Transaksi pada catatan kehadiran mencegah pengiriman ganda untuk mahasiswa/sesi yang sama.
 
-### 1. Role Mahasiswa
-- Login akun mahasiswa menggunakan Email & Password (Firebase Auth).
-- Memasukkan kode presensi 6 karakter (diberikan oleh dosen saat sesi aktif).
-- Validasi otomatis: sesi harus aktif, kode cocok, dan mahasiswa belum tercatat pada sesi tersebut.
-- Konfirmasi kehadiran berhasil secara real-time (status otomatis: **Hadir**).
-- Melihat riwayat presensi yang pernah diikuti beserta statusnya.
+## Teknologi dan struktur
 
-### 2. Role Dosen
-- Login akun dosen.
-- Membuat sesi presensi baru (Judul Sesi + Informasi Pertemuan).
-- Sistem menghasilkan kode presensi 6 karakter alfanumerik kapital unik secara acak.
-- Menampilkan kode presensi ke mahasiswa.
-- Mengontrol status sesi: Buka sesi / Tutup sesi.
-- Memantau daftar mahasiswa yang hadir secara real-time.
-- Melakukan koreksi status kehadiran per mahasiswa (**Hadir**, **Izin**, **Sakit**, **Alpha**).
+- Flutter/Dart; state management Provider.
+- Firebase Auth untuk autentikasi, Realtime Database untuk `users`, `sessions`, dan `attendance`.
+- `lib/firebase_options.dart`: konfigurasi Android manual; `lib/main.dart`: inisialisasi Firebase.
+- `lib/models/`, `lib/services/`, `lib/providers/`: model, akses Firebase, dan state.
+- `lib/screens/auth/`, `lib/screens/dosen/`, `lib/screens/mahasiswa/`: layar sesuai peran.
+- `lib/routes/`, `lib/theme/`, `lib/utils/`: navigasi, tema, generator kode, dan validasi.
+- `database.rules.json`: rujukan Security Rules yang telah dipublikasikan; `test_rules/`: pengujian aturan dengan Database Emulator.
 
----
+## Menjalankan dan memeriksa
 
-## 🧱 Arsitektur & Teknologi
+Gunakan Flutter SDK yang kompatibel dengan `pubspec.yaml`, Android SDK, dan Java untuk build/pengujian aturan. Dari root proyek:
 
-- **Framework:** Flutter (Channel stable, Android target)
-- **Bahasa:** Dart 3
-- **State Management:** Provider
-- **Backend / BaaS:**
-  - **Firebase Authentication:** Manajemen otentikasi email/password (password tidak pernah disimpan di database).
-  - **Firebase Realtime Database:** Penyimpanan profil, sesi presensi, dan data kehadiran secara real-time.
-- **Package Name:** `com.kelompok2.mobileproh`
-
----
-
-## 📂 Struktur Proyek
-
-```
-lib/
-├── firebase_options.dart         # Konfigurasi Firebase (hasil generate flutterfire)
-├── main.dart                     # Entry point & inisialisasi Firebase + Provider
-├── models/
-│   ├── user_model.dart           # Model data pengguna (Mahasiswa / Dosen)
-│   ├── session_model.dart        # Model data sesi presensi
-│   └── attendance_model.dart     # Model data kehadiran & status
-├── services/
-│   ├── auth_service.dart         # Layanan Firebase Auth + sinkronisasi profil
-│   └── session_service.dart      # Layanan CRUD sesi, kode, kehadiran, koreksi
-├── providers/
-│   ├── auth_provider.dart        # State management otentikasi
-│   └── session_provider.dart     # State management MahasiswaProvider & DosenProvider
-├── routes/
-│   └── app_router.dart           # Pengarah layar berbasis role (Mahasiswa / Dosen)
-├── screens/
-│   ├── auth/
-│   │   └── login_screen.dart     # Layar login
-│   ├── mahasiswa/
-│   │   ├── mahasiswa_shell.dart  # Bottom navigation mahasiswa (IndexedStack)
-│   │   ├── dashboard_mahasiswa_screen.dart # Input kode presensi
-│   │   ├── detail_sesi_mahasiswa_screen.dart # Detail sesi & konfirmasi
-│   │   └── riwayat_screen.dart   # Riwayat presensi
-│   └── dosen/
-│       ├── dosen_shell.dart      # Bottom navigation dosen (IndexedStack)
-│       ├── dashboard_dosen_screen.dart # Dashboard dosen & sesi terbaru
-│       ├── buat_sesi_screen.dart # Form pembuatan sesi baru
-│       ├── daf_sesi_screen.dart  # Daftar semua sesi
-│       └── detail_sesi_dosen_screen.dart # Detail sesi, kode, real-time list, koreksi
-├── theme/
-│   └── app_theme.dart            # Palet warna sistem & status kehadiran
-└── utils/
-    ├── code_generator.dart       # Generator kode presensi 6 karakter aman
-    └── validators.dart           # Validasi input form
-```
-
----
-
-## 🚀 Menjalankan Proyek
-
-### Prasyarat
-- Flutter SDK (>= 3.24.0)
-- Java OpenJDK 17+
-- Android SDK Platform & Build-tools
-- Akun Firebase (untuk tahap produksi/demo)
-
-### Menjalankan Unit Test (Tanpa Kredensial Firebase)
 ```bash
+flutter pub get
+flutter analyze
 flutter test
 ```
 
-### Menjalankan Analisis Statis
+Untuk suite Security Rules lokal (memerlukan Node.js, Java, dependensi `test_rules/`, dan `firebase-database-emulator.jar` yang digunakan runner):
+
 ```bash
-flutter analyze
+cd test_rules
+npm install
+npm test
 ```
 
-### Konfigurasi Firebase
-Baca panduan lengkap di file [FIREBASE_SETUP.md](FIREBASE_SETUP.md).
+Perintah di atas menjalankan pemeriksaan lokal; **bukan bukti bahwa alur login/presensi telah diuji pada Android**. Pengujian Android yang masih perlu dilakukan: jalankan aplikasi pada perangkat/emulator, masuk dengan akun demo yang sudah dibuat, buat lalu buka sesi sebagai dosen, cari kode sebagai mahasiswa, catat kehadiran, cek riwayat/koreksi, dan tutup sesi. Detail langkah dan batasannya ada di [FIREBASE_SETUP.md](FIREBASE_SETUP.md). Jangan mencantumkan kata sandi atau berkas kredensial dalam laporan.

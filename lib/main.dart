@@ -11,9 +11,8 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inisialisasi Firebase.
-  // firebase_options.dart dihasilkan oleh `flutterfire configure`
-  // setelah setup Firebase Console (lihat FIREBASE_SETUP.md).
+  // Opsi Android disusun dari konfigurasi proyek yang tersedia;
+  // lihat FIREBASE_SETUP.md untuk asal dan langkah verifikasinya.
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const PresensiApp());

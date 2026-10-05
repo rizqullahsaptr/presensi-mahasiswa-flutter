@@ -1,0 +1,17 @@
+{
+  "run_date": "2026-10-06",
+  "environment": "Windows 10; Flutter 3.47.1; Dart 3.13.1; OpenJDK 23.0.2; Firebase Realtime Database Local Emulator Suite; Android debug APK build without a device",
+  "checks": {
+    "flutter_analyze": {"status":"passed","command":"flutter analyze","evidence":"flutter_analyze.log","summary":"No issues found"},
+    "flutter_test": {"status":"passed","command":"flutter test --reporter expanded","evidence":"flutter_test.log","summary":"37/37 passed: 16 unit/model/validator, 10 service/provider, 11 widget/render checks"},
+    "rules_test": {"status":"passed","command":"cd test_rules && npm test","evidence":"rules_test.log","summary":"38/38 Firebase Realtime Database Security Rules local emulator tests passed"},
+    "apk_debug": {"status":"passed","command":"flutter build apk --debug","evidence":"flutter_build_debug.log","summary":"Gradle assembleDebug succeeded; debug APK copied to deliverables"}
+  },
+  "test_counts": {
+    "unit": {"passed":16,"failed":0},
+    "widget": {"passed":11,"failed":0},
+    "service": {"passed":10,"failed":0},
+    "rules": {"passed":38,"failed":0}
+  },
+  "apk_path": "deliverables/app-debug.apk"
+}
