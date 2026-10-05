@@ -1,6 +1,6 @@
 # Panduan Konfigurasi Firebase Manual
 
-Dokumen ini berisi panduan langkah demi langkah untuk mengonfigurasi Firebase pada proyek **Presensi Mahasiswa** (`com.kelompok2.mobileproh`).
+Dokumen ini berisi panduan langkah demi langkah untuk mengonfigurasi Firebase pada proyek **Presensi Mahasiswa** (`com.kelompok2.mobileproh.presensi_mahasiswa`).
 
 > **PENTING:** Seluruh kode aplikasi sudah siap dan tidak bergantung pada nilai hardcoded. Anda hanya perlu mengikuti langkah-langkah di bawah untuk menghubungkan proyek ke Firebase Console Anda sendiri.
 
@@ -37,29 +37,32 @@ Dokumen ini berisi panduan langkah demi langkah untuk mengonfigurasi Firebase pa
    {
      "rules": {
        "users": {
+         ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'dosen'",
+         ".indexOn": ["role"],
          "$uid": {
-           ".read": "auth != null",
-           ".write": "auth != null && auth.uid == $uid",
-           ".validate": "newData.hasChildren(['nama', 'email', 'identitas', 'role']) && (newData.child('role').val() == 'mahasiswa' || newData.child('role').val() == 'dosen')"
+           ".read": "auth != null && auth.uid === $uid",
+           ".write": false,
+           ".validate": "newData.hasChildren(['nama', 'email', 'identitas', 'role']) && newData.child('nama').isString() && newData.child('email').isString() && newData.child('identitas').isString() && (newData.child('role').val() === 'mahasiswa' || newData.child('role').val() === 'dosen')"
          }
        },
        "sessions": {
          ".read": "auth != null",
+         ".indexOn": ["lecturerId", "kodePresensi", "status"],
          "$sessionId": {
-           ".write": "auth != null && (!data.exists() || data.child('lecturerId').val() == auth.uid)",
-           ".validate": "newData.hasChildren(['judulSesi', 'informasiPertemuan', 'lecturerId', 'kodePresensi', 'status', 'waktuDibuat'])"
-         },
-         ".indexOn": ["lecturerId", "kodePresensi", "status"]
+           ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'dosen' && ((!data.exists() && newData.child('lecturerId').val() === auth.uid) || (data.exists() && data.child('lecturerId').val() === auth.uid && newData.child('lecturerId').val() === data.child('lecturerId').val()))",
+           ".validate": "newData.hasChildren(['judulSesi', 'informasiPertemuan', 'lecturerId', 'kodePresensi', 'status', 'waktuDibuat']) && newData.child('judulSesi').isString() && newData.child('judulSesi').val().length > 0 && newData.child('informasiPertemuan').isString() && newData.child('lecturerId').isString() && newData.child('kodePresensi').isString() && newData.child('kodePresensi').val().length === 6 && (newData.child('status').val() === 'aktif' || newData.child('status').val() === 'ditutup') && newData.child('waktuDibuat').isNumber() && (!newData.hasChild('waktuDibuka') || newData.child('waktuDibuka').isNumber()) && (!newData.hasChild('waktuDitutup') || newData.child('waktuDitutup').isNumber())"
+         }
        },
        "attendance": {
          "$sessionId": {
-           ".read": "auth != null",
+           ".read": "auth != null && (root.child('sessions').child($sessionId).child('lecturerId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'dosen')",
+           ".indexOn": ["studentId", "status"],
            "$studentId": {
-             ".write": "auth != null && (auth.uid == $studentId || root.child('sessions').child($sessionId).child('lecturerId').val() == auth.uid)",
-             ".validate": "newData.hasChildren(['sessionId', 'studentId', 'status', 'waktuPresensi']) && (newData.child('status').val() == 'Hadir' || newData.child('status').val() == 'Izin' || newData.child('status').val() == 'Sakit' || newData.child('status').val() == 'Alpha')"
+             ".read": "auth != null && auth.uid === $studentId",
+             ".write": "auth != null && newData.exists() && ((auth.uid === $studentId && root.child('users').child(auth.uid).child('role').val() === 'mahasiswa' && !data.exists() && root.child('sessions').child($sessionId).child('status').val() === 'aktif' && newData.child('status').val() === 'Hadir') || (root.child('users').child(auth.uid).child('role').val() === 'dosen' && root.child('sessions').child($sessionId).child('lecturerId').val() === auth.uid))",
+             ".validate": "newData.hasChildren(['sessionId', 'studentId', 'status', 'waktuPresensi']) && newData.child('sessionId').val() === $sessionId && newData.child('studentId').val() === $studentId && (newData.child('status').val() === 'Hadir' || newData.child('status').val() === 'Izin' || newData.child('status').val() === 'Sakit' || newData.child('status').val() === 'Alpha') && newData.child('waktuPresensi').isNumber()"
            }
-         },
-         ".indexOn": ["studentId", "status"]
+         }
        }
      }
    }
@@ -103,7 +106,7 @@ Cara paling cepat dan resmi untuk menghubungkan Flutter ke Firebase:
 Jika tidak menggunakan FlutterFire CLI:
 
 1. Di Firebase Console, klik icon **Android** untuk menambahkan aplikasi.
-2. Masukkan Package Name: `com.kelompok2.mobileproh`
+2. Masukkan Package Name: `com.kelompok2.mobileproh.presensi_mahasiswa`
 3. Masukkan App Nickname: `Presensi Mahasiswa`
 4. Unduh file `google-services.json`, lalu letakkan di:
    ```
