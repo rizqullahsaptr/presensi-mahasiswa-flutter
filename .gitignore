@@ -57,3 +57,4 @@ test_rules/firebase-database-emulator.jar
 
 # Local demonstration user seed; never publish personal account mappings.
 /firebase_seed_users.json
+/deliverables/Presensi_Mahasiswa_Web_Preview_Source.zip
