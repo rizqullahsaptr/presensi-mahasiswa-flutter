@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/user_model.dart';
@@ -23,16 +25,26 @@ class MahasiswaProvider extends ChangeNotifier {
   final SessionService _service;
   final UserModel user;
 
-  MahasiswaProvider(this._service, this.user);
+  /// Batas waktu pemuatan riwayat. Dapat diperpendek pada pengujian supaya
+  /// keadaan "menggantung" tidak berputar tanpa akhir di perangkat nyata.
+  final Duration riwayatTimeout;
+
+  MahasiswaProvider(
+    this._service,
+    this.user, {
+    this.riwayatTimeout = const Duration(seconds: 20),
+  });
 
   PresensiStatus _presensiStatus = PresensiStatus.idle;
   List<Map<String, dynamic>> _riwayat = [];
   bool _loadingRiwayat = false;
+  bool _riwayatError = false;
   SessionModel? _sesiDitemukan; // sesi yang ditemukan saat mahasiswa input kode
 
   PresensiStatus get presensiStatus => _presensiStatus;
   List<Map<String, dynamic>> get riwayat => List.unmodifiable(_riwayat);
   bool get loadingRiwayat => _loadingRiwayat;
+  bool get riwayatError => _riwayatError;
   SessionModel? get sesiDitemukan => _sesiDitemukan;
 
   void resetPresensiStatus() {
@@ -91,13 +103,24 @@ class MahasiswaProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Memuat riwayat kehadiran mahasiswa.
+  ///
+  /// Keadaan dibedakan secara eksplisit: [loadingRiwayat] selama proses
+  /// berjalan, [riwayatError] bila pembacaan gagal atau melewati batas waktu,
+  /// dan daftar kosong hanya berarti server benar-benar mengembalikan nol
+  /// catatan. Kegagalan tidak lagi disamarkan sebagai "belum ada riwayat",
+  /// dan pemuatan tidak dapat berputar tanpa akhir karena ada batas waktu.
   Future<void> muatRiwayat() async {
     _loadingRiwayat = true;
+    _riwayatError = false;
     notifyListeners();
     try {
-      _riwayat = await _service.getRiwayatMahasiswa(user.uid);
+      _riwayat = await _service
+          .getRiwayatMahasiswa(user.uid)
+          .timeout(riwayatTimeout);
+      _riwayatError = false;
     } catch (_) {
-      _riwayat = [];
+      _riwayatError = true;
     }
     _loadingRiwayat = false;
     notifyListeners();

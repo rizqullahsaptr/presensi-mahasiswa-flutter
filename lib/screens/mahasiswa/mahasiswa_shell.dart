@@ -27,7 +27,15 @@ class _MahasiswaShellState extends State<MahasiswaShell> {
       child: Builder(
         builder: (context) {
           final screens = [
-            DashboardMahasiswaScreen(user: widget.user),
+            DashboardMahasiswaScreen(
+              user: widget.user,
+              // Pintasan dari beranda ke tab Riwayat — memperjelas akses
+              // yang sebelumnya hanya ada pada bilah navigasi bawah.
+              onBukaRiwayat: () {
+                setState(() => _selectedIndex = 1);
+                context.read<MahasiswaProvider>().muatRiwayat();
+              },
+            ),
             RiwayatScreen(user: widget.user),
           ];
 

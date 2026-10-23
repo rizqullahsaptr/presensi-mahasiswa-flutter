@@ -9,7 +9,17 @@ import 'detail_sesi_mahasiswa_screen.dart';
 
 class DashboardMahasiswaScreen extends StatefulWidget {
   final UserModel user;
-  const DashboardMahasiswaScreen({super.key, required this.user});
+
+  /// Pintasan menuju tab Riwayat Kehadiran pada shell mahasiswa.
+  /// Dua responden uji kegunaan tidak menemukan menu Riwayat sendiri,
+  /// sehingga pintasan ini ditambahkan pada beranda tanpa membuat fitur baru.
+  final VoidCallback? onBukaRiwayat;
+
+  const DashboardMahasiswaScreen({
+    super.key,
+    required this.user,
+    this.onBukaRiwayat,
+  });
 
   @override
   State<DashboardMahasiswaScreen> createState() =>
@@ -67,22 +77,30 @@ class _DashboardMahasiswaScreenState extends State<DashboardMahasiswaScreen> {
     switch (status) {
       case PresensiStatus.kodeError:
         title = 'Kode Tidak Ditemukan';
-        message = 'Kode yang kamu masukkan tidak valid. Periksa kembali kode dari dosen.';
+        message =
+            'Kode yang kamu masukkan tidak valid. Kode presensi terdiri dari '
+            '6 karakter huruf atau angka, misalnya AB3X7K. Periksa kembali '
+            'kode dari dosen.';
         icon = Icons.error_outline;
         iconColor = Colors.red;
         break;
       case PresensiStatus.sesiTidakAktif:
-        title = 'Sesi Ditutup';
+        title = 'Sesi Sudah Ditutup';
         message = judulSesi != null
-            ? 'Sesi "$judulSesi" sudah ditutup. Kode ini tidak dapat digunakan.'
-            : 'Sesi sudah ditutup.';
+            ? 'Sesi "$judulSesi" sudah ditutup oleh dosen, sehingga kodenya '
+                  'tidak dapat dipakai lagi. Hubungi dosen bila kamu perlu '
+                  'mencatat kehadiran.'
+            : 'Sesi sudah ditutup oleh dosen, sehingga kodenya tidak dapat '
+                  'dipakai lagi. Hubungi dosen bila kamu perlu mencatat '
+                  'kehadiran.';
         icon = Icons.lock_outline;
         iconColor = Colors.orange;
         break;
       case PresensiStatus.koneksiError:
         title = 'Koneksi Gagal';
         message =
-            'Tidak dapat terhubung ke server. Periksa koneksi internet kamu.';
+            'Tidak dapat terhubung ke server. Periksa koneksi internet kamu, '
+            'lalu tekan Coba Lagi.';
         icon = Icons.wifi_off;
         iconColor = Colors.grey;
         break;
@@ -102,6 +120,15 @@ class _DashboardMahasiswaScreenState extends State<DashboardMahasiswaScreen> {
         ),
         content: Text(message),
         actions: [
+          if (status == PresensiStatus.koneksiError)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                context.read<MahasiswaProvider>().resetPresensiStatus();
+                _cariSesi();
+              },
+              child: const Text('Coba Lagi'),
+            ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
@@ -141,7 +168,7 @@ class _DashboardMahasiswaScreenState extends State<DashboardMahasiswaScreen> {
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -188,7 +215,34 @@ class _DashboardMahasiswaScreenState extends State<DashboardMahasiswaScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+
+              // Pintasan menuju Riwayat Kehadiran — selalu terlihat pada
+              // beranda. Dua responden uji kegunaan tidak menemukan menu
+              // Riwayat sendiri pada bilah navigasi bawah.
+              Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFE3F2FD),
+                    child: Icon(Icons.history, color: AppTheme.primary),
+                  ),
+                  title: const Text(
+                    'Riwayat Kehadiran',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'Lihat catatan presensi kamu pada sesi sebelumnya.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: widget.onBukaRiwayat,
+                ),
+              ),
+              const SizedBox(height: 20),
 
               const Text(
                 'Masukkan Kode Presensi',
@@ -200,13 +254,17 @@ class _DashboardMahasiswaScreenState extends State<DashboardMahasiswaScreen> {
               ),
               const SizedBox(height: 4),
               const Text(
-                'Minta kode dari dosen pengampu kelas.',
+                'Kode terdiri dari 6 karakter huruf atau angka. Minta kode dari '
+                'dosen pengampu kelas, lalu tekan Cari Sesi.',
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 12),
 
               Form(
                 key: _formKey,
+                // Pesan validasi mengikuti isi kolom terbaru, sehingga
+                // peringatan tidak tertinggal pada kolom yang sudah diisi.
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 child: TextFormField(
                   controller: _kodeCtrl,
                   textCapitalization: TextCapitalization.characters,
@@ -218,7 +276,9 @@ class _DashboardMahasiswaScreenState extends State<DashboardMahasiswaScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                   decoration: const InputDecoration(
+                    labelText: 'Kode Presensi',
                     hintText: 'AB3X7K',
+                    helperText: '6 karakter, contoh: AB3X7K',
                     hintStyle: TextStyle(
                       letterSpacing: 2,
                       color: AppTheme.textSecondary,

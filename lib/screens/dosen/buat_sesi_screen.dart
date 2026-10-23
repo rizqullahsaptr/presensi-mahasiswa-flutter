@@ -72,6 +72,9 @@ class _BuatSesiScreenState extends State<BuatSesiScreen> {
           padding: const EdgeInsets.all(20),
           child: Form(
             key: _formKey,
+            // Pesan validasi dievaluasi ulang saat pengguna mengetik, sehingga
+            // peringatan tidak tertinggal pada kolom yang sudah diisi.
+            autovalidateMode: AutovalidateMode.onUserInteraction,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

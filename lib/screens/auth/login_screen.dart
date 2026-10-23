@@ -82,6 +82,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     padding: const EdgeInsets.all(20),
                     child: Form(
                       key: _formKey,
+                      // Pesan validasi mengikuti isi kolom terbaru, sehingga
+                      // peringatan tidak tertinggal pada kolom yang sudah diisi.
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
